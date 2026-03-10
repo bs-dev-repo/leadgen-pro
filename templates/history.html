@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>History – LeadGen Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">LG<span class="logo-dot">●</span>PRO</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Search</a>
+      <a href="/results" class="nav-link">Results</a>
+      <a href="/bookmarks" class="nav-link">Bookmarks</a>
+      <a href="/history" class="nav-link active">History</a>
+      <a href="/import" class="nav-link">Import</a>
+    </div>
+  </nav>
+
+  <main class="page-main">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">Search History</h2>
+        <p class="page-sub" id="page-sub">All previous searches</p>
+      </div>
+      <button class="btn-outline" onclick="window.open('/api/download?all_leads=true','_blank')">↓ Export All</button>
+    </div>
+
+    <div id="history-list" class="history-list">
+      <div class="loading-row">Loading history...</div>
+    </div>
+  </main>
+
+  <script>
+    async function load() {
+      const res = await fetch('/api/history');
+      const history = await res.json();
+      const el = document.getElementById('history-list');
+
+      document.getElementById('page-sub').textContent = `${history.length} searches total`;
+
+      if (history.length === 0) {
+        el.innerHTML = '<div class="loading-row">No searches yet. <a href="/">Start a search</a></div>';
+        return;
+      }
+
+      el.innerHTML = history.map(h => `
+        <div class="history-card" id="hist-${h.id}">
+          <div class="hist-info">
+            <span class="hist-query">${esc(h.keyword)} in ${esc(h.location)}</span>
+            <span class="hist-meta">${h.lead_count} leads · ${new Date(h.date).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}</span>
+          </div>
+          <div class="hist-actions">
+            <a href="/results?search_id=${h.id}" class="btn-sm-primary">View Results</a>
+            <a href="/api/download?search_id=${h.id}" class="btn-sm-outline" target="_blank">↓ Excel</a>
+            <a href="/api/download/csv?search_id=${h.id}" class="btn-sm-outline" target="_blank">↓ CSV</a>
+            <button class="btn-sm-danger" onclick="del(${h.id})">✕ Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function del(id) {
+      if (!confirm('Delete this search and all its leads?')) return;
+      await fetch(`/api/history/${id}`, { method: 'DELETE' });
+      document.getElementById(`hist-${id}`)?.remove();
+    }
+
+    function esc(s) { return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    load();
+  </script>
+</body>
+</html>

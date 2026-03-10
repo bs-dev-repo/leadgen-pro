@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Results – LeadGen Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">LG<span class="logo-dot">●</span>PRO</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Search</a>
+      <a href="/results" class="nav-link active">Results</a>
+      <a href="/bookmarks" class="nav-link">Bookmarks</a>
+      <a href="/history" class="nav-link">History</a>
+      <a href="/import" class="nav-link">Import</a>
+    </div>
+  </nav>
+
+  <main class="page-main">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title" id="page-title">Search Results</h2>
+        <p class="page-sub" id="page-sub">Loading...</p>
+      </div>
+      <div class="export-group">
+        <button class="btn-outline" onclick="exportCSV()">↓ CSV</button>
+        <button class="btn-outline" onclick="exportExcel()">↓ Excel</button>
+        <button class="btn-outline" onclick="exportAll()">↓ All</button>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="filter-bar">
+      <input id="filter-input" type="text" class="filter-input" placeholder="Filter by name, email, phone..." oninput="filterLeads()" />
+      <span id="filter-count" class="filter-count"></span>
+    </div>
+
+    <!-- Table -->
+    <div class="table-wrap">
+      <table class="leads-table">
+        <thead>
+          <tr>
+            <th>BUSINESS</th>
+            <th>PHONE</th>
+            <th>ADDRESS</th>
+            <th>WEBSITE</th>
+            <th>EMAIL</th>
+            <th>RATING</th>
+            <th>SAVE</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          <tr><td colspan="7" class="loading-row">Loading results...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination" id="pagination"></div>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const searchId = params.get('search_id');
+    let currentPage = parseInt(params.get('page')) || 1;
+    let allLeads = [];
+
+    async function loadResults(page = 1) {
+      currentPage = page;
+      let url = `/api/results?page=${page}&per_page=25`;
+      if (searchId) url += `&search_id=${searchId}`;
+
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        allLeads = data.leads;
+
+        document.getElementById('page-title').textContent = searchId
+          ? `Search #${searchId} Results`
+          : 'All Results';
+        document.getElementById('page-sub').textContent =
+          `${data.total} leads found — Page ${data.page} of ${data.total_pages}`;
+        document.getElementById('filter-count').textContent = `${data.total} total`;
+
+        renderTable(data.leads);
+        renderPagination(data);
+      } catch(e) {
+        document.getElementById('results-body').innerHTML =
+          '<tr><td colspan="7" class="loading-row">Error loading results.</td></tr>';
+      }
+    }
+
+    function renderTable(leads) {
+      const tbody = document.getElementById('results-body');
+      if (leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading-row">No results found.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = leads.map(l => `
+        <tr class="lead-row" data-id="${l.id}">
+          <td>
+            <div class="lead-name">${esc(l.name)}</div>
+            ${l.maps_link ? `<a href="${esc(l.maps_link)}" target="_blank" class="maps-link">↗ Maps</a>` : ''}
+          </td>
+          <td class="mono">${esc(l.phone) || '–'}</td>
+          <td class="addr-cell">${esc(l.address) || '–'}</td>
+          <td>${l.website ? `<a href="${esc(l.website)}" target="_blank" class="web-link">${esc(shortUrl(l.website))}</a>` : '–'}</td>
+          <td class="email-cell mono">${esc(l.email) || '<span class="no-email">none</span>'}</td>
+          <td>
+            <span class="rating-badge">${l.rating ? l.rating + ' ★' : '–'}</span>
+            ${l.reviews ? `<span class="reviews-count">(${l.reviews})</span>` : ''}
+          </td>
+          <td>
+            <button class="bookmark-btn ${l.bookmarked ? 'bookmarked' : ''}"
+              onclick="toggleBookmark(${l.id}, ${l.bookmarked ? 0 : 1}, this)"
+              title="${l.bookmarked ? 'Remove bookmark' : 'Bookmark'}">
+              ${l.bookmarked ? '★' : '☆'}
+            </button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderPagination(data) {
+      const el = document.getElementById('pagination');
+      if (data.total_pages <= 1) { el.innerHTML = ''; return; }
+
+      let html = '';
+      if (data.page > 1) html += `<button class="page-btn" onclick="loadResults(${data.page-1})">← Prev</button>`;
+
+      const start = Math.max(1, data.page - 2);
+      const end = Math.min(data.total_pages, data.page + 2);
+      for (let i = start; i <= end; i++) {
+        html += `<button class="page-btn ${i === data.page ? 'active' : ''}" onclick="loadResults(${i})">${i}</button>`;
+      }
+
+      if (data.page < data.total_pages) html += `<button class="page-btn" onclick="loadResults(${data.page+1})">Next →</button>`;
+      el.innerHTML = html;
+    }
+
+    function filterLeads() {
+      const query = document.getElementById('filter-input').value.toLowerCase();
+      const rows = document.querySelectorAll('.lead-row');
+      let visible = 0;
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const show = text.includes(query);
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+      });
+      document.getElementById('filter-count').textContent = `${visible} shown`;
+    }
+
+    async function toggleBookmark(id, val, btn) {
+      await fetch('/api/bookmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lead_id: id, bookmarked: val === 1 })
+      });
+      btn.textContent = val === 1 ? '★' : '☆';
+      btn.classList.toggle('bookmarked', val === 1);
+      btn.setAttribute('onclick', `toggleBookmark(${id}, ${val === 1 ? 0 : 1}, this)`);
+    }
+
+    function exportExcel() {
+      let url = '/api/download?';
+      if (searchId) url += `search_id=${searchId}`;
+      window.open(url, '_blank');
+    }
+
+    function exportCSV() {
+      let url = '/api/download/csv?';
+      if (searchId) url += `search_id=${searchId}`;
+      window.open(url, '_blank');
+    }
+
+    function exportAll() {
+      window.open('/api/download?all_leads=true', '_blank');
+    }
+
+    function esc(s) { return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function shortUrl(u) { return u.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]; }
+
+    loadResults(currentPage);
+  </script>
+</body>
+</html>

@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookmarks – LeadGen Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">LG<span class="logo-dot">●</span>PRO</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Search</a>
+      <a href="/results" class="nav-link">Results</a>
+      <a href="/bookmarks" class="nav-link active">Bookmarks</a>
+      <a href="/history" class="nav-link">History</a>
+      <a href="/import" class="nav-link">Import</a>
+    </div>
+  </nav>
+
+  <main class="page-main">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">★ Bookmarked Leads</h2>
+        <p class="page-sub" id="page-sub">Loading...</p>
+      </div>
+      <div class="export-group">
+        <button class="btn-outline" onclick="window.open('/api/download/csv?bookmarked_only=true','_blank')">↓ CSV</button>
+        <button class="btn-outline" onclick="window.open('/api/download?bookmarked_only=true','_blank')">↓ Excel</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="leads-table">
+        <thead>
+          <tr>
+            <th>BUSINESS</th>
+            <th>PHONE</th>
+            <th>ADDRESS</th>
+            <th>WEBSITE</th>
+            <th>EMAIL</th>
+            <th>RATING</th>
+            <th>REMOVE</th>
+          </tr>
+        </thead>
+        <tbody id="results-body">
+          <tr><td colspan="7" class="loading-row">Loading bookmarks...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" id="pagination"></div>
+  </main>
+
+  <script>
+    let currentPage = 1;
+
+    async function load(page = 1) {
+      currentPage = page;
+      const res = await fetch(`/api/results?bookmarked_only=true&page=${page}&per_page=25`);
+      const data = await res.json();
+
+      document.getElementById('page-sub').textContent = `${data.total} bookmarked leads`;
+
+      const tbody = document.getElementById('results-body');
+      if (data.leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="loading-row">No bookmarks yet. Star leads from the results page.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.leads.map(l => `
+        <tr id="row-${l.id}">
+          <td>
+            <div class="lead-name">${esc(l.name)}</div>
+            ${l.maps_link ? `<a href="${esc(l.maps_link)}" target="_blank" class="maps-link">↗ Maps</a>` : ''}
+          </td>
+          <td class="mono">${esc(l.phone) || '–'}</td>
+          <td class="addr-cell">${esc(l.address) || '–'}</td>
+          <td>${l.website ? `<a href="${esc(l.website)}" target="_blank" class="web-link">${esc(shortUrl(l.website))}</a>` : '–'}</td>
+          <td class="email-cell mono">${esc(l.email) || '<span class="no-email">none</span>'}</td>
+          <td><span class="rating-badge">${l.rating ? l.rating + ' ★' : '–'}</span></td>
+          <td>
+            <button class="bookmark-btn bookmarked" onclick="remove(${l.id})">★</button>
+          </td>
+        </tr>
+      `).join('');
+
+      renderPagination(data);
+    }
+
+    async function remove(id) {
+      await fetch('/api/bookmark', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({lead_id: id, bookmarked: false})
+      });
+      document.getElementById(`row-${id}`)?.remove();
+    }
+
+    function renderPagination(data) {
+      const el = document.getElementById('pagination');
+      if (data.total_pages <= 1) { el.innerHTML = ''; return; }
+      let html = '';
+      if (data.page > 1) html += `<button class="page-btn" onclick="load(${data.page-1})">← Prev</button>`;
+      for (let i = 1; i <= data.total_pages; i++) {
+        html += `<button class="page-btn ${i===data.page?'active':''}" onclick="load(${i})">${i}</button>`;
+      }
+      if (data.page < data.total_pages) html += `<button class="page-btn" onclick="load(${data.page+1})">Next →</button>`;
+      el.innerHTML = html;
+    }
+
+    function esc(s) { return String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function shortUrl(u) { return u.replace(/^https?:\/\/(www\.)?/,'').split('/')[0]; }
+
+    load();
+  </script>
+</body>
+</html>

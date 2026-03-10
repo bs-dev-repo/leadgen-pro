@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeadGen Pro – Find Business Leads</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">LG<span class="logo-dot">●</span>PRO</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link active">Search</a>
+      <a href="/results" class="nav-link">Results</a>
+      <a href="/bookmarks" class="nav-link">Bookmarks</a>
+      <a href="/history" class="nav-link">History</a>
+      <a href="/import" class="nav-link">Import</a>
+    </div>
+  </nav>
+
+  <main class="hero-main">
+    <div class="hero-bg">
+      <div class="grid-lines"></div>
+    </div>
+
+    <div class="hero-content">
+      <div class="hero-badge">FREE LEAD GENERATION TOOL</div>
+      <h1 class="hero-title">
+        Find Business<br/>
+        <span class="accent-text">Leads & Emails</span>
+      </h1>
+      <p class="hero-sub">Scrape Google Maps. Extract emails. Export to Excel. All free.</p>
+
+      <div class="search-card">
+        <div class="search-row">
+          <div class="search-field">
+            <label class="field-label">KEYWORD</label>
+            <input id="keyword" type="text" class="field-input" placeholder="dentist, salon, restaurant..." />
+          </div>
+          <div class="search-divider">+</div>
+          <div class="search-field">
+            <label class="field-label">LOCATION</label>
+            <input id="location" type="text" class="field-input" placeholder="Delhi, Mumbai, New York..." />
+          </div>
+          <div class="search-field search-field--sm">
+            <label class="field-label">MAX RESULTS</label>
+            <input id="max-results" type="number" class="field-input" value="25" min="5" max="200" />
+          </div>
+        </div>
+        <button id="search-btn" class="btn-primary" onclick="startSearch()">
+          <span id="btn-text">◆ SEARCH NOW</span>
+        </button>
+      </div>
+
+      <!-- Progress Section -->
+      <div id="progress-section" class="progress-section hidden">
+        <div class="progress-header">
+          <span id="progress-label">Initializing scraper...</span>
+          <button class="btn-stop" onclick="stopSearch()">■ STOP</button>
+        </div>
+        <div class="progress-bar-wrap">
+          <div id="progress-bar" class="progress-bar" style="width:0%"></div>
+        </div>
+        <div class="progress-stats">
+          <span id="stat-found">0 found</span>
+          <span id="stat-progress">0 / 0</span>
+          <span id="stat-errors">0 errors</span>
+        </div>
+      </div>
+
+      <!-- Recent Searches -->
+      <div class="recent-section">
+        <div class="recent-header">
+          <span class="recent-title">RECENT SEARCHES</span>
+          <a href="/history" class="recent-more">View all →</a>
+        </div>
+        <div id="recent-list" class="recent-list">
+          <div class="recent-empty">No recent searches yet.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/script.js"></script>
+  <script>
+    let pollInterval = null;
+    let currentSearchId = null;
+
+    async function startSearch() {
+      const keyword = document.getElementById('keyword').value.trim();
+      const location = document.getElementById('location').value.trim();
+      const maxResults = parseInt(document.getElementById('max-results').value) || 25;
+
+      if (!keyword || !location) {
+        alert('Please enter both keyword and location');
+        return;
+      }
+
+      document.getElementById('search-btn').disabled = true;
+      document.getElementById('btn-text').textContent = '⌛ STARTING...';
+      document.getElementById('progress-section').classList.remove('hidden');
+
+      try {
+        const res = await fetch('/api/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keyword, location, max_results: maxResults })
+        });
+        const data = await res.json();
+        currentSearchId = data.search_id;
+
+        pollInterval = setInterval(() => pollStatus(currentSearchId), 1500);
+      } catch(e) {
+        alert('Search failed: ' + e.message);
+        resetSearchBtn();
+      }
+    }
+
+    async function pollStatus(searchId) {
+      try {
+        const res = await fetch('/api/search/status');
+        const s = await res.json();
+
+        document.getElementById('progress-label').textContent = s.current || 'Working...';
+        document.getElementById('stat-found').textContent = s.found + ' found';
+        document.getElementById('stat-errors').textContent = s.errors + ' errors';
+
+        if (s.total > 0) {
+          const pct = Math.min(100, (s.progress / s.total) * 100);
+          document.getElementById('progress-bar').style.width = pct + '%';
+          document.getElementById('stat-progress').textContent = s.progress + ' / ' + s.total;
+        }
+
+        if (!s.running) {
+          clearInterval(pollInterval);
+          resetSearchBtn();
+          document.getElementById('progress-label').textContent = `✓ Done! Found ${s.found} leads.`;
+          document.getElementById('progress-bar').style.width = '100%';
+          setTimeout(() => {
+            window.location.href = `/results?search_id=${searchId}`;
+          }, 1500);
+        }
+      } catch(e) {}
+    }
+
+    async function stopSearch() {
+      await fetch('/api/search/stop', { method: 'POST' });
+      clearInterval(pollInterval);
+      resetSearchBtn();
+    }
+
+    function resetSearchBtn() {
+      document.getElementById('search-btn').disabled = false;
+      document.getElementById('btn-text').textContent = '◆ SEARCH NOW';
+    }
+
+    async function loadRecent() {
+      try {
+        const res = await fetch('/api/history');
+        const history = await res.json();
+        const container = document.getElementById('recent-list');
+
+        if (history.length === 0) {
+          container.innerHTML = '<div class="recent-empty">No recent searches yet.</div>';
+          return;
+        }
+
+        container.innerHTML = history.slice(0, 5).map(h => `
+          <a href="/results?search_id=${h.id}" class="recent-item">
+            <span class="recent-query">${h.keyword} in ${h.location}</span>
+            <span class="recent-count">${h.lead_count} leads</span>
+            <span class="recent-date">${new Date(h.date).toLocaleDateString()}</span>
+          </a>
+        `).join('');
+      } catch(e) {}
+    }
+
+    loadRecent();
+  </script>
+</body>
+</html>

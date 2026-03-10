@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Import – LeadGen Pro</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <nav class="navbar">
+    <a href="/" class="logo">LG<span class="logo-dot">●</span>PRO</a>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Search</a>
+      <a href="/results" class="nav-link">Results</a>
+      <a href="/bookmarks" class="nav-link">Bookmarks</a>
+      <a href="/history" class="nav-link">History</a>
+      <a href="/import" class="nav-link active">Import</a>
+    </div>
+  </nav>
+
+  <main class="page-main">
+    <div class="page-header">
+      <div>
+        <h2 class="page-title">↑ Import Websites</h2>
+        <p class="page-sub">Upload CSV/Excel with website URLs to extract emails</p>
+      </div>
+    </div>
+
+    <div class="import-container">
+      <div class="import-card">
+        <div class="import-format">
+          <p class="format-title">EXPECTED FILE FORMAT:</p>
+          <div class="format-table">
+            <div class="format-header">Website</div>
+            <div class="format-row">example.com</div>
+            <div class="format-row">abcclinic.com</div>
+            <div class="format-row">dentalcare.in</div>
+          </div>
+          <p class="format-note">First column should be "website", "url", or "site". Supports .csv and .xlsx files.</p>
+        </div>
+
+        <div class="upload-zone" id="upload-zone"
+          ondragover="event.preventDefault(); this.classList.add('drag-over')"
+          ondragleave="this.classList.remove('drag-over')"
+          ondrop="handleDrop(event)">
+          <div class="upload-icon">⬆</div>
+          <p class="upload-text">Drag & drop your file here</p>
+          <p class="upload-sub">or</p>
+          <label class="btn-primary" style="cursor:pointer">
+            BROWSE FILE
+            <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])" />
+          </label>
+          <p class="upload-formats">CSV · XLSX · XLS</p>
+        </div>
+
+        <div id="upload-status" class="upload-status hidden"></div>
+
+        <div id="progress-section" class="progress-section hidden">
+          <div class="progress-header">
+            <span id="progress-label">Processing websites...</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div id="progress-bar" class="progress-bar" style="width:30%;animation:pulse 1s infinite"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    function handleDrop(e) {
+      e.preventDefault();
+      document.getElementById('upload-zone').classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    }
+
+    async function handleFile(file) {
+      if (!file) return;
+
+      const validTypes = ['.csv', '.xlsx', '.xls'];
+      const ext = '.' + file.name.split('.').pop().toLowerCase();
+      if (!validTypes.includes(ext)) {
+        showStatus('Please upload a .csv or .xlsx file', 'error');
+        return;
+      }
+
+      showStatus(`Uploading ${file.name}...`, 'info');
+      document.getElementById('progress-section').classList.remove('hidden');
+
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const res = await fetch('/api/import', { method: 'POST', body: formData });
+        const data = await res.json();
+
+        if (data.search_id) {
+          showStatus(`✓ Processing ${data.count} websites... You'll be redirected when complete.`, 'success');
+          document.getElementById('progress-label').textContent = `Processing ${data.count} websites for emails...`;
+
+          setTimeout(() => {
+            window.location.href = `/results?search_id=${data.search_id}`;
+          }, 3000);
+        } else {
+          showStatus('Upload failed', 'error');
+        }
+      } catch(e) {
+        showStatus('Error: ' + e.message, 'error');
+      }
+    }
+
+    function showStatus(msg, type) {
+      const el = document.getElementById('upload-status');
+      el.textContent = msg;
+      el.className = `upload-status status-${type}`;
+    }
+  </script>
+</body>
+</html>
